@@ -73,8 +73,9 @@ def naive_matmul(a, b):
 #
 # A = [a, b]    
 #     [c, d]    
-#                      Where a and b are shapes (8, 8), being their multiplication the shape 
+#                      Where A and B are shapes (8, 8), being their multiplication the shape 
 #                      (M, K) x (K, N) in this case being M, K, N = 8.
+#
 #                      The individual letters are shapes (4,4), or more
 #                      precisely (BLOCK SIZE M, BLOCK SIZE N) if we have chosen them to be 4.
 # B = [e, f]
@@ -95,9 +96,9 @@ def naive_matmul(a, b):
 #           
 #           c = dot(a,b)
 #
-# This, indeed, is incomplete, as we use the BLOCK SIZE K to tile further the multiplication of 
-# those matrix [a, b] and [e].  
-#                         [g]
+# This, indeed, is a form of calculating the dot product of two matrix, but we will tile it even further 
+# as we use the BLOCK SIZE K distribute more the multiplication of matrix [a, b] and [e].  
+#                                                                                    [g]
 #
 #for k in range(0, K, BLOCK_SIZE_K):
 #       a = A[m : m+BLOCK_SIZE_M, k : k+BLOCK_SIZE_K]
