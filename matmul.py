@@ -89,7 +89,7 @@ def naive_matmul(a, b):
 # would exactly mean:
 #
 #   for m in range(0, M, BLOCK_SIZE_M):
-#       for n in range(0, N, BLOCK_SIZE_M):
+#       for n in range(0, N, BLOCK_SIZE_N):
 #
 #           a = A[m:m+BLOCK_SIZE_M, 0:K]
 #           b = B[0:K,n:n+BLOCK_SIZE_N']
@@ -107,16 +107,15 @@ def naive_matmul(a, b):
 # What this line does is that in the case of the matrix [a, b] and [e] (assuming that we have BLOCK_SIZE_K = 4 and it 0):
 #                                                                  [g]
 #
-#       a = a (shape(BLOCK_SIZE_M, BLOCK_SIZE_N)), memory offset -> A[0:BLOCK_SIZE_M, 0:BLOCK_SIZE_K]
-#       b = e (shape(BLOCK_SIZE_M, BLOCK_SIZE_N)), memory offset -> B[0:BLOCK_SIZE_K, 0:BLOCK_SIZE_N]
-#
+#       a = a (shape(BLOCK_SIZE_M, BLOCK_SIZE_K)), memory offset -> A[0:BLOCK_SIZE_M, 0:BLOCK_SIZE_K]
+#       b = e (shape(BLOCK_SIZE_k, BLOCK_SIZE_N)), memory offset -> B[0:BLOCK_SIZE_K, 0:BLOCK_SIZE_N]
 #       acc += dot(a,b)
 #
 #
 # Then it 2:
 #
-#       a = b (shape(BLOCK_SIZE_M, BLOCK_SIZE_N)), memory offset -> A[0:BLOCK_SIZE_M, K:K+BLOCK_SIZE_K]
-#       b = g (shape(BLOCK_SIZE_M, BLOCK_SIZE_N)), memory offset -> B[K:K+BLOCK_SIZE_K, 0:BLOCK_SIZE_N]
+#       a = b (shape(BLOCK_SIZE_M, BLOCK_SIZE_N)), memory offset -> A[0:BLOCK_SIZE_M, K:k+BLOCK_SIZE_K]
+#       b = g (shape(BLOCK_SIZE_M, BLOCK_SIZE_N)), memory offset -> B[K:k+BLOCK_SIZE_K, 0:BLOCK_SIZE_N]
 #
 #       acc += dot(a,b)
 #
