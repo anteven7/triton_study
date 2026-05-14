@@ -109,14 +109,14 @@ def naive_matmul(a, b):
 #                                                                  [g]
 #
 #       a = a (shape(BLOCK_SIZE_M, BLOCK_SIZE_K)), memory offset -> A[0:BLOCK_SIZE_M, 0:BLOCK_SIZE_K]
-#       b = e (shape(BLOCK_SIZE_k, BLOCK_SIZE_N)), memory offset -> B[0:BLOCK_SIZE_K, 0:BLOCK_SIZE_N]
+#       b = e (shape(BLOCK_SIZE_K, BLOCK_SIZE_N)), memory offset -> B[0:BLOCK_SIZE_K, 0:BLOCK_SIZE_N]
 #       acc += dot(a,b)
 #
 #
 # Then it 2:
 #
-#       a = b (shape(BLOCK_SIZE_M, BLOCK_SIZE_N)), memory offset -> A[0:BLOCK_SIZE_M, K:k+BLOCK_SIZE_K]
-#       b = g (shape(BLOCK_SIZE_M, BLOCK_SIZE_N)), memory offset -> B[K:k+BLOCK_SIZE_K, 0:BLOCK_SIZE_N]
+#       a = b (shape(BLOCK_SIZE_M, BLOCK_SIZE_K)), memory offset -> A[0:BLOCK_SIZE_M, k:k+BLOCK_SIZE_K]
+#       b = g (shape(BLOCK_SIZE_K, BLOCK_SIZE_N)), memory offset -> B[k:k+BLOCK_SIZE_K, 0:BLOCK_SIZE_N]
 #
 #       acc += dot(a,b)
 #
