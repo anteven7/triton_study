@@ -77,7 +77,8 @@ def naive_matmul(a, b):
 #                      (M, K) x (K, N) in this case being M, K, N = 8.
 #
 #                      The individual letters are shapes (4,4), or more
-#                      precisely (BLOCK SIZE M, BLOCK SIZE N) if we have chosen them to be 4.
+#                      precisely (BLOCK SIZE M, BLOCK SIZE K) in the case of A and 
+#                      (BLOCK SIZE K, BLOCK SIZE N) in the case of B
 # B = [e, f]
 #     [g, h]
 #
