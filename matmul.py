@@ -73,10 +73,10 @@ def naive_matmul(a, b):
 #
 # A = [a, b]    
 #     [c, d]    
-#                      Where a and b are shapes (10, 10), being their multiplication the shape 
-#                      (M, K) x (K, N) in this case being M, K, N = 10.
-#                      The individual letters are shapes (5,5), or more
-#                      precisely (BLOCK SIZE M, BLOCK SIZE N) if we have chosen them to be 5.
+#                      Where a and b are shapes (8, 8), being their multiplication the shape 
+#                      (M, K) x (K, N) in this case being M, K, N = 8.
+#                      The individual letters are shapes (4,4), or more
+#                      precisely (BLOCK SIZE M, BLOCK SIZE N) if we have chosen them to be 4.
 # B = [e, f]
 #     [g, h]
 #
@@ -103,7 +103,7 @@ def naive_matmul(a, b):
 #       a = A[m : m+BLOCK_SIZE_M, k : k+BLOCK_SIZE_K]
 #       b = B[k : k+BLOCK_SIZE_K, n : n+BLOCK_SIZE_N]
 #
-# What this line does is that in the case of the matrix [a, b] and [e] (assuming that we have BLOCK_SIZE_K = 5 and it 0):
+# What this line does is that in the case of the matrix [a, b] and [e] (assuming that we have BLOCK_SIZE_K = 4 and it 0):
 #                                                                  [g]
 #
 #       a = a (which is (block size m,block size k))
