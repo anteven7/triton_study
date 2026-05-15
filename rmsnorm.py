@@ -133,8 +133,8 @@ if __name__=='__main__':
     print(triton_loops)
     print(triton_no_loops)
 
-    print(f'triton with loops is better {naive/triton_loops} times faster than the naive implementation') 
-    print(f'triton with no loops is better {naive/triton_no_loops} times faster than the naive implementation') 
+    print(f'triton with loops is {naive/triton_loops} times faster than the naive implementation') 
+    print(f'triton with no loops is {naive/triton_no_loops} times faster than the naive implementation') 
 
 
 
