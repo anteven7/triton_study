@@ -139,6 +139,8 @@ DEVICE = triton.runtime.driver.active.get_active_torch_device()
 import os
 os.environ['TRITON_INTERPRETER']="1"
 
+@triton.jit 
+def matmul_kernel(a, b, c, BLOCK_SIZE_M, BLOCK_SIZE_N, BLOCK_SIZE_K, ):
 
 
 
@@ -146,23 +148,9 @@ os.environ['TRITON_INTERPRETER']="1"
 
 
 
+ matmul(a,b):
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-def matmul(a,b):
-
-    assert a.ndim == b.nidm == 2
+    assert a.ndim == b.nidm == 2:
     assert a.shape[1] == b.shape[0]
 
     (M, K), (_, N) = a.shape, b.shape
@@ -171,13 +159,11 @@ def matmul(a,b):
     # lets get total chunks of c,
     #
     # [a, b, c]
-    # [d, e, f]         dimension (M/m_block_size, N/m_block_size), each letter is (block size m, block size n)
-    # [g, h, i]
+    # [d, e, f]         dimension (M/m_block_size, N/m_block_size), as each letter of the
+    # [g, h, i]         C matrix is (block size m, block size n)
     #
-    
-    # this cdiv on the grid means that we are finding the dimensions of the previous target matrix 
-    # (which is a and b reduced to blocks)
- 
+    #
+    #
     grid = lambda meta:
 
         (triton.cdiv(M, meta['BLOCK_SIZE_M']) * triton.cdiv(N, meta['BLOCK_SIZE_N']))
@@ -205,29 +191,5 @@ def test_kernel(size, atol = 1e-2, rtol = 1e-1, device=DEVICE):
 
     print("done")
 
-
-@triton.jit
-def matmul_kernel():
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 if __name__ == "__main__":
-    #
-    # A = torch.rand(3,3)
-    # B = torch.rand(3,5)
-    #
-    # print(naive_matmul(A,B))
+

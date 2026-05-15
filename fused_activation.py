@@ -100,13 +100,13 @@ def leaky_relu_kernel(output_ptr, input_ptr, input_row_stride, output_row_stride
     #
     row_start = tl.program_id(0)
     row_step = tl.num_programs(0) # computes the len of programs. if programs are [0,..,N] it returns n+1. This is 
-    # necessary as we could potentially have more rows than number of programs, so the first program when it finishes 
-    # has to step row + row_step to get the next one.
+    # necessary as we could potentially have more rows than number of programs, so the program when it finishes 
+    # has to step_to(row+row_step) to get the next one.
     # 
     # The next for loop is an iteration to get this done:
     #
     for row_idx in tl.range(row_start, n_rows, row_step, num_stages = num_stages): # It means it starts at , goes to maximun 
-        # number of rows, iterating by the number of max programs, to treat remaining rows.
+        # number of rows, iterating by the number of programs, to treat remaining rows.
         #
         # input_ptr is the memory address of the very first element of the tensor.
         # row_idx is the row we want. 
