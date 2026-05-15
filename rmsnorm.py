@@ -79,18 +79,44 @@ def rmsnorm_kernel_fused(x_pointer, y_pointer,
         
         tl.store(y+cols, rmsnorm, mask=cols<N)
 
-def rmsnorm_kernel_test(x):
 
-    N,M = x.shape
+@triton.jit
+def rmsnorm_kernel_no_loops(x_pointer, y_pointer,
+                          row_stride, epsilon, N, BLOCK_SIZE: tl.constexpr):
+    # we make a super big assumption here that is that our max rows would be less than 
+    # the normal hidden dimension of 4096, that means we do not need to iterate 
+    # the row we are treating as we could include the whole of it into a block size
+    row = tl.program_id(0)
 
-    grid = (N,)
+    x = x_pointer + row*row_stride
+    y = y_pointer + row*row_stride
+    
+    cols = tl.arange(0, BLOCK_SIZE)
+    mask = cols<N
+
+    a = tl.load(x+cols, mask=mask, other=0.).to(tl.float32)
+    mean = tl.sum(a*a, axis=0)/N
+    rms = tl.sqrt(mean+epsilon)
+    output = a / rms
+    tl.store(y+cols, output, mask=mask )
+
+
+def rmsnorm_kernel_test(x, no_loop):
+
+    M,N = x.shape
+
+    grid = (M,)
     
     y = torch.empty_like(x)
 
-    BLOCK_SIZE = triton.next_power_of_2(M)
-
-    rmsnorm_kernel_fused[grid](x, y, x.stride(0), 1e-1, N, BLOCK_SIZE) 
+    BLOCK_SIZE = triton.next_power_of_2(N)
+    if no_loop:
+        rmsnorm_kernel_no_loops[grid](x,y,x.stride(0), 1e-1, N, BLOCK_SIZE)
+    else:
+        rmsnorm_kernel_fused[grid](x, y, x.stride(0), 1e-1, N, BLOCK_SIZE) 
+   
     return y 
+
 
 if __name__=='__main__':
     torch.manual_seed(42)
@@ -99,12 +125,16 @@ if __name__=='__main__':
     print(matrix)
 
     naive = triton.testing.do_bench(lambda: naive_rmsnorm(matrix,w=1)) 
-    triton =  triton.testing.do_bench(lambda: rmsnorm_kernel_test(matrix) )
+    triton_loops =  triton.testing.do_bench(lambda: rmsnorm_kernel_test(matrix, False))
+    triton_no_loops = triton.testing.do_bench(lambda:rmsnorm_kernel_test(matrix, True))
+
 
     print(naive)
-    print(triton)
+    print(triton_loops)
+    print(triton_no_loops)
 
-    print(f'triton is better {naive/triton} times faster than the naive implementation') 
+    print(f'triton with loops is better {naive/triton_loops} times faster than the naive implementation') 
+    print(f'triton with no loops is better {naive/triton_no_loops} times faster than the naive implementation') 
 
 
 
