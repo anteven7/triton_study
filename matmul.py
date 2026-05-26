@@ -2,6 +2,13 @@ import triton
 import triton.language as tl
 import torch
 
+# Matrix multiplications are a key building block of most modern high-performance computing systems.
+# They are notoriously hard to optimize, hence their implementation is generally done by hardware 
+# vendors themselves as part of so-called “kernel libraries” (e.g., cuBLAS). Unfortunately, these
+# libraries are often proprietary and cannot be easily customized to accommodate the needs of modern 
+# deep learning workloads (e.g., fused activation functions). In this tutorial, you will learn how 
+# to implement efficient matrix multiplications by yourself with Triton, in a way that is easy to
+#  customize and extend.
 
 # Let's check out how a naive matmul would be in python code.
 # This is a naive (and super slow) implementation.
@@ -27,7 +34,7 @@ def naive_matmul(a, b):
 
     return C
 
-#
+
 # lets see how the for logic will translate to triton's 
 # main goal here is to block-multiply to feed the tensor cores as much as possible.
 #
@@ -134,13 +141,245 @@ def naive_matmul(a, b):
 # at the same destination.
 #
 
+#l2 cache reuse, triton-lang picture.
+
 DEVICE = triton.runtime.driver.active.get_active_torch_device()
 
 import os
 os.environ['TRITON_INTERPRETER']="1"
 
+# let's let triton figure out what are the best BLOCK_SIZE_M BLOCK_SIZE_N.
+
+autotune_conf = [
+        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 8}, num_stages=3,
+                      num_warps=8),
+        triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4,
+                      num_warps=4),
+        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4,
+                      num_warps=4),
+        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4,
+                      num_warps=4),
+        triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4,
+                      num_warps=4),
+        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 32, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4,
+                      num_warps=4),
+        triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 32, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=5,
+                      num_warps=2),
+        triton.Config({'BLOCK_SIZE_M': 32, 'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=5,
+                      num_warps=2),
+        # Good config for fp8 inputs.
+        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 128, 'GROUP_SIZE_M': 8}, num_stages=3,
+                      num_warps=8),
+        triton.Config({'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 128, 'GROUP_SIZE_M': 8}, num_stages=3,
+                      num_warps=8),
+        triton.Config({'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 128, 'GROUP_SIZE_M': 8}, num_stages=4,
+                      num_warps=4),
+        triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 128, 'GROUP_SIZE_M': 8}, num_stages=4,
+                      num_warps=4),
+        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 128, 'GROUP_SIZE_M': 8}, num_stages=4,
+                      num_warps=4),
+        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 8}, num_stages=4,
+                      num_warps=4),
+        triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 8}, num_stages=4,
+                      num_warps=4),
+        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 32, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 8}, num_stages=4,
+                      num_warps=4)
+]
+
+@triton.autotune(configs = autotune_conf, key=['M', 'N', 'K'])
+# to continue with the explanation we need to analyze the concept of L2 cache optimization.
+# when doing a naive matmul with tiling like the example before we do it in a so called row-major
+# ordering. This means that each pid computes something like this:
+
+# Lets say A is a matrix of 15 tiles     
+    
+#     [0,   1,  2,  3]
+#     [4,   5,  6,  7]
+#     [8,   9, 10, 11]
+#     [12, 13, 14, 15]
+
+
+# and target matrix C as this:
+
+# [a, b, c, d]
+# [e, f, g, h]
+# [i, j, k, l]
+# [m, n, o, p]
+
+
+# When you separate this into pids for calculations, it ends up being something like:
+
+#     PID = 0, calculates chunk a
+#     [x, x, x, x]        [x, _, _, _]
+#     [_, _, _, _]        [x, _, _, _]
+#     [_, _, _, _]        [x, _, _, _]
+#     [_, _, _, _]        [x, _, _, _]
+#     PID = 1, calculates chunk b
+#     [x, x, x, x]        [_, x, _, _]
+#     [_, _, _, _]        [_, x, _, _]
+#     [_, _, _, _]        [_, x, _, _]
+#     [_, _, _, _]        [_, x, _, _]
+#     PID = 2 ...
+#     [x, x, x, x]        [_, _, x, _]
+#     [_, _, _, _]        [_, _, x, _]
+#     [_, _, _, _]        [_, _, x, _]
+#     [_, _, _, _]        [_, _, x, _]
+#     PID = 3 ...
+#     [x, x, x, x]        [_, _, _, x]
+#     [_, _, _, _]        [_, _, _, x]
+#     [_, _, _, _]        [_, _, _, x]
+#     [_, _, _, _]        [_, _, _, x]
+
+# obviously, each chunk x is iterated and accumulated for the calculation of the result chunk.
+
+# If we look at the number of rows and cols of chunk loaded, we see we load 1 row of A and 4 cols 
+# of B. In total thats around 5 rows/cols of chunks. 
+
+# Luckily there is a smarter implementation. Lets look at pids 4 and 5:
+
+#     PID = 4
+#     [_, _, _, _]        [x, _, _, _]
+#     [x, x, x, x]        [x, _, _, _]
+#     [_, _, _, _]        [x, _, _, _]
+#     [_, _, _, _]        [x, _, _, _]
+#     PID = 5
+#     [_, _, _, _]        [_, x, _, _]
+#     [x, x, x, x]        [_, x, _, _]
+#     [_, _, _, _]        [_, x, _, _]
+#     [_, _, _, _]        [_, x, _, _]
+
+# As you can appreciate, if we were to replace the pids 2 and 3 for 4 and 5 we would only have to load
+# 4 cols/rows of chunks, saving us 1!
+
+# this is used to reduce the amount of loading in the L2 cache, which significantly speeds up the 
+# whole kernel with bigger sizes. This is called group-major ordering.
+
+# the relocation is somehow more difficult, as triton loads blocks into SMs based on the order of 
+# PIDs, meaning that if we force 4 and 5 to be in the same SM, we would probably to have all 0, 1, 2,
+# 3, 4, and 5 PIDs.
+
+# Then, as a result, the only option would be to reorder the matrix so we target the chunks we want by
+# moving the PIDs index, getting as a result something like:
+
+
+#     [0,  2,  4,  6]
+#     [1,  3,  5,  7]
+#     [8, 10, 12, 14]
+#     [9, 11, 13, 15] 
+
+# Now, 0 through 3 correspond to group-major ordering! Notice in this example we can visualize it as splitting our
+# PIDs into "groups" demarcated by the dashed lines.
+
+#     [0,  2,   4,  6]
+#     [1,  3,   5,  7]
+#     ----------------
+#     [8, 10,  12, 14]
+#     [9, 11,  13, 15] 
+
+
+# then, one question could arise: why are we then permutating the numbers if both stacks are going to 
+# the same SM?
+
+# well, the response is the scheduler of triton. It alwasy goes sequential, as it doesnt understand 2D:
+# it computes pid 0, pid 1, pid 2.... so even if they are getting the same work, the order in which they 
+# compute the chunks dictates which remains in the SRAM.
+
+
 @triton.jit 
-def matmul_kernel(a, b, c, BLOCK_SIZE_M, BLOCK_SIZE_N, BLOCK_SIZE_K, ):
+def matmul_kernel(
+    # pointers to the matrices
+    a, b, c,
+    # dimensions of matrices
+    M, N, K,
+    # The stride variables represent how much to increase the ptr by when moving by 1
+    # element in a particular dimension. E.g. `stride_am` is how much to increase `a_ptr`
+    # by to get the element one row down (A has M rows).
+    stride_am, stride_ak, 
+    stride_bk, stride_bn, 
+    stride_cm, stride_cn,
+    # now the constants, we could not pass it bc the autotune.
+    BLOCK_SIZE_M: tl.constexpr, 
+    BLOCK_SIZE_N: tl.constexpr, 
+    BLOCK_SIZE_K: tl.constexpr,
+    GROUP_SIZE_M: tl.constexpr, 
+    ACTIVATION: tl.constexpr):
+    
+    # our first duty is to calculate the pids, map them to the block of 
+    # C they should compute, following the goup-major order to L2 cache reuse.a
+
+    pid = tl.program_id(0) # as always calculating the pid im In
+    # now lets see how many pids we have in each dimension
+    num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
+    num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
+    print(f"pid shape of C ({num_pid_m}, {num_pid_n})")
+
+    # after we know how many pids, we proceed to calculate the number of pids in the group
+    # the groups are made splitting through M, as we saw before. 
+
+    num_pid_in_group = GROUP_SIZE_M * num_pid_n # this is the n of pids per group
+
+    # having the number of pids in group, we can then identify each group
+    # pid being the one im at divided by number of pids in group
+    # for example, pid 7 and num_pid_in_group 8 would mean 7//8 = 0 (group 0)
+
+    group_id = pid // num_pid_in_group
+
+    # lets locate now the first pid in each group
+    # if we are in group 1 and group size is 2, we get pid 2 as the first of the 2 group 
+
+    first_pid_m = group_id * GROUP_SIZE_M    
+
+    # lets now calculate the last group size in case NUM PID M is not divisible by GROUP SIZE M 
+
+    group_size_m = min(num_pid_m - first_pid_m, GROUP_SIZE_M)
+
+    # now we calculate PID coordinates. The cool part:
+
+    #     Col 0  Col 1  Col 2  Col 3
+    #        ---------------------------
+    # Row 0 |   0      2      4      6  |
+    # Row 1 |   1      3      5      7  | -> GROUP 0 (Starts at Row 0)
+    #       |---------------------------|
+    # Row 2 |   8     10     12     14  |
+    # Row 3 |   9     11     13     15  | -> GROUP 1 (Starts at Row 2)
+
+
+    # pid_m aims to calculate the row
+
+    # first pid m = the first pid on the group
+    # pid = current pid
+    # num pid in group = n pids per group = 8
+    # group size m = the safe group size = 2 
+
+    # pid % num_pid_in_group finds the relative id, if we are in pid 11 and num pid in group is 8, we get 3. 
+    # This means PID 11 is the 3rd item (starting from 0) inside Group 1. By stripping away the global PID number, 
+    # both formulas can now figure out where this tile belongs relative to the start of its own group. 
+
+    # this step is crucial, the relative_id % group_size_m is what ccreates the zigzag:
+    # relative position 0 % 2 = 0 (row 0), relative position 1 % 2 = row 1
+    # relative position 2 mod 2 = row 0, relative position 3 % 2 = 1 = row 1
+    # this reshapes the order of pids within the rows of the group
+    # we sum first_pid_m just represents the starting row, so we add it up
+
+    pid_m = first_pid_m + ((pid % num_pid_in_group) % group_size_m)
+
+    # pid_n aims to calculate the the colum
+    
+    # pid % num_pid_in_group as we said calculates the relative pid within the group, in this case 3 
+    # we do floor division against the group height -> 3//2 = 1 
+    
+    # Why this works: Because our group is 2 rows tall, the GPU spends exactly 2 sequential PIDs in every 
+    # column before moving to the right.
+
+    # Relative IDs 0 and 1 belong to Col 0 (0//2 = 0, 1//2 = 0)
+    # Relative IDs 2 and 3 belong to Col 1 (2//2 = 1, 3//2 = 1)
+    # Relative IDs 4 and 5 belong to Col 2 (4//2 = 2, 5//2 = 2)
+
+    pid_n = (pid % num_pid_in_group) // group_size_m
+
+
+    # now we arrive to pointer math:
+    
 
 
 
@@ -148,7 +387,29 @@ def matmul_kernel(a, b, c, BLOCK_SIZE_M, BLOCK_SIZE_N, BLOCK_SIZE_K, ):
 
 
 
- matmul(a,b):
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    pass
+
+
+
+
+def matmul(a,b):
 
     assert a.ndim == b.nidm == 2:
     assert a.shape[1] == b.shape[0]
@@ -156,26 +417,27 @@ def matmul_kernel(a, b, c, BLOCK_SIZE_M, BLOCK_SIZE_N, BLOCK_SIZE_K, ):
     (M, K), (_, N) = a.shape, b.shape
     c = torch.empty((M,N), device = a.device, dtype=torch.float16)
 
-    # lets get total chunks of c,
+    # lets get total chunks of c:
     #
     # [a, b, c]
-    # [d, e, f]         dimension (M/m_block_size, N/m_block_size), as each letter of the
+    # [d, e, f]         dimension (M/m_block_size, N/n_block_size), as each letter of the
     # [g, h, i]         C matrix is (block size m, block size n)
     #
     #
     #
-    grid = lambda meta:
-
-        (triton.cdiv(M, meta['BLOCK_SIZE_M']) * triton.cdiv(N, meta['BLOCK_SIZE_N']))
-
+    grid = lambda meta:(
+        triton.cdiv(M, meta['BLOCK_SIZE_M']) * triton.cdiv(N, meta['BLOCK_SIZE_N'])
+        )
+ 
     matmul_kernel[grid](
-
         a, b, c,
         M, N, K,
         a.stride(0), a.stride(1),
         b.stride(0), b.stride(1),
         c.stride(0), c.stride(1),
     )
+    return c
+
 
 def test_kernel(size, atol = 1e-2, rtol = 1e-1, device=DEVICE):
     
