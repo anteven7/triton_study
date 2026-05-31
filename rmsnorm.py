@@ -18,9 +18,15 @@ def naive_rmsnorm(x, w, epsilon=1e-1):
     return out
 
 
+def torch_rmsnorm(x, w, epsilon=1e-1):
+    # Vectorized PyTorch implementation of RMSNorm
+    rms = torch.sqrt(torch.mean(x ** 2, dim=-1, keepdim=True) + epsilon)
+    return (x / rms) * w
+
+
 
 @triton.jit 
-def rmsnorm_kernel_fused(x_pointer, y_pointer,
+def rmsnorm_kernel_fused(x_pointer, y_pointer, w_pointer,
                           row_stride, epsilon, N, BLOCK_SIZE: tl.constexpr):
 
     #print("block size", BLOCK_SIZE) # next power of two of cols.
@@ -66,22 +72,22 @@ def rmsnorm_kernel_fused(x_pointer, y_pointer,
     # now lets compute the sqrt
     rms = tl.sqrt(mean + epsilon)
 
-    
-
     for off in range(0, N, BLOCK_SIZE):
         # again, getting the chunck of data we are going to process 
         cols = off + tl.arange(0, BLOCK_SIZE) 
         
         # pulling back the values to sram
         a = tl.load(x+cols, mask = cols<N, other = 0.).to(tl.float32)
+        w = w_pointer + cols
+        weight = tl.load(w, mask=cols<N, other=0.).to(tl.float32)
         
-        rmsnorm = a / rms
+        rmsnorm = (a / rms) * weight
         
         tl.store(y+cols, rmsnorm, mask=cols<N)
 
 
 @triton.jit
-def rmsnorm_kernel_no_loops(x_pointer, y_pointer,
+def rmsnorm_kernel_no_loops(x_pointer, y_pointer, w_pointer,
                           row_stride, epsilon, N, BLOCK_SIZE: tl.constexpr):
     # we make a super big assumption here that is that our max rows would be less than 
     # the normal hidden dimension of 4096, that means we do not need to iterate 
@@ -90,18 +96,19 @@ def rmsnorm_kernel_no_loops(x_pointer, y_pointer,
 
     x = x_pointer + row*row_stride
     y = y_pointer + row*row_stride
-    
+    w = w_pointer + tl.arange(0, BLOCK_SIZE) 
     cols = tl.arange(0, BLOCK_SIZE)
     mask = cols<N
 
     a = tl.load(x+cols, mask=mask, other=0.).to(tl.float32)
+    weight = tl.load(w, mask=mask, other=0.).to(tl.float32)
     mean = tl.sum(a*a, axis=0)/N
     rms = tl.sqrt(mean+epsilon)
-    output = a / rms
+    output = (a / rms) * weight
     tl.store(y+cols, output, mask=mask )
 
 
-def rmsnorm_kernel_test(x, no_loop):
+def rmsnorm_kernel_test(x, w, no_loop):
 
     M,N = x.shape
 
@@ -111,9 +118,9 @@ def rmsnorm_kernel_test(x, no_loop):
 
     BLOCK_SIZE = triton.next_power_of_2(N)
     if no_loop:
-        rmsnorm_kernel_no_loops[grid](x,y,x.stride(0), 1e-1, N, BLOCK_SIZE)
+        rmsnorm_kernel_no_loops[grid](x, y, w, x.stride(0), 1e-1, N, BLOCK_SIZE)
     else:
-        rmsnorm_kernel_fused[grid](x, y, x.stride(0), 1e-1, N, BLOCK_SIZE) 
+        rmsnorm_kernel_fused[grid](x, y, w, x.stride(0), 1e-1, N, BLOCK_SIZE) 
    
     return y 
 
@@ -121,20 +128,35 @@ def rmsnorm_kernel_test(x, no_loop):
 if __name__=='__main__':
     torch.manual_seed(42)
     matrix = torch.randn(10,10, device='cuda')
+    w = torch.randn(10, device='cuda')
 
-    print(matrix)
+    print("Input Matrix:\n", matrix)
+    print("Weights:\n", w)
 
-    naive = triton.testing.do_bench(lambda: naive_rmsnorm(matrix,w=1)) 
-    triton_loops =  triton.testing.do_bench(lambda: rmsnorm_kernel_test(matrix, False))
-    triton_no_loops = triton.testing.do_bench(lambda:rmsnorm_kernel_test(matrix, True))
+    # Correctness check
+    y_naive = naive_rmsnorm(matrix, w)
+    y_torch = torch_rmsnorm(matrix, w)
+    y_loops = rmsnorm_kernel_test(matrix, w, False)
+    y_no_loops = rmsnorm_kernel_test(matrix, w, True)
+    
+    torch.testing.assert_close(y_torch, y_naive, rtol=1e-4, atol=1e-4)
+    torch.testing.assert_close(y_loops, y_naive, rtol=1e-4, atol=1e-4)
+    torch.testing.assert_close(y_no_loops, y_naive, rtol=1e-4, atol=1e-4)
+    print("Correctness check passed! PyTorch and Triton implementations match the naive implementation exactly.")
 
+    naive = triton.testing.do_bench(lambda: naive_rmsnorm(matrix, w)) 
+    torch_res = triton.testing.do_bench(lambda: torch_rmsnorm(matrix, w))
+    triton_loops =  triton.testing.do_bench(lambda: rmsnorm_kernel_test(matrix, w, False))
+    triton_no_loops = triton.testing.do_bench(lambda:rmsnorm_kernel_test(matrix, w, True))
 
-    print(naive)
-    print(triton_loops)
-    print(triton_no_loops)
+    print(f"Naive execution time:           {naive:.4f} ms")
+    print(f"Torch vectorized execution time:{torch_res:.4f} ms")
+    print(f"Triton Loops execution time:     {triton_loops:.4f} ms")
+    print(f"Triton No Loops execution time:  {triton_no_loops:.4f} ms")
 
-    print(f'triton with loops is {naive/triton_loops} times faster than the naive implementation') 
-    print(f'triton with no loops is {naive/triton_no_loops} times faster than the naive implementation') 
+    print(f'triton with loops is {naive/triton_loops:.1f}x times faster than the naive implementation') 
+    print(f'triton with no loops is {naive/triton_no_loops:.1f}x times faster than the naive implementation') 
+    print(f'triton with no loops is {torch_res/triton_no_loops:.1f}x times faster than PyTorch vectorized') 
 
 
 
