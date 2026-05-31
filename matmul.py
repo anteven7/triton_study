@@ -14,23 +14,23 @@ import torch
 # This is a naive (and super slow) implementation.
 #
 def naive_matmul(a, b):
-    # a: (M, K), b: (K, N)
+# a: (M, K), b: (K, N)
     M, K = a.shape
     _, N = b.shape
-    
+
     # 1. Initialize result matrix of shape (M, N)
     C = torch.zeros((M, N))
 
     # 2. Loop over rows of A
     for i in range(M):
-        # 3. Loop over columns of B
+    # 3. Loop over columns of B
         for j in range(N):
             # 4. Loop over the 'shared' dimension K to calculate the sum
             acc = 0
             for k in range(K):
                 acc += a[i, k] * b[k, j]
             
-            C[i, j] = acc
+        C[i, j] = acc
 
     return C
 
@@ -151,39 +151,39 @@ os.environ['TRITON_INTERPRETER']="1"
 # let's let triton figure out what are the best BLOCK_SIZE_M BLOCK_SIZE_N.
 
 autotune_conf = [
-        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 8}, num_stages=3,
-                      num_warps=8),
-        triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4,
-                      num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4,
-                      num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4,
-                      num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4,
-                      num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 32, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4,
-                      num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 32, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=5,
-                      num_warps=2),
-        triton.Config({'BLOCK_SIZE_M': 32, 'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=5,
-                      num_warps=2),
-        # Good config for fp8 inputs.
-        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 128, 'GROUP_SIZE_M': 8}, num_stages=3,
-                      num_warps=8),
-        triton.Config({'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 128, 'GROUP_SIZE_M': 8}, num_stages=3,
-                      num_warps=8),
-        triton.Config({'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 128, 'GROUP_SIZE_M': 8}, num_stages=4,
-                      num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 128, 'GROUP_SIZE_M': 8}, num_stages=4,
-                      num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 128, 'GROUP_SIZE_M': 8}, num_stages=4,
-                      num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 8}, num_stages=4,
-                      num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 8}, num_stages=4,
-                      num_warps=4),
-        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 32, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 8}, num_stages=4,
-                      num_warps=4)
+triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 8}, num_stages=3,
+                num_warps=8),
+triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4,
+                num_warps=4),
+triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4,
+                num_warps=4),
+triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4,
+                num_warps=4),
+triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4,
+                num_warps=4),
+triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 32, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4,
+                num_warps=4),
+triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 32, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=5,
+                num_warps=2),
+triton.Config({'BLOCK_SIZE_M': 32, 'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=5,
+                num_warps=2),
+# Good config for fp8 inputs.
+triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 128, 'GROUP_SIZE_M': 8}, num_stages=3,
+                num_warps=8),
+triton.Config({'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 128, 'GROUP_SIZE_M': 8}, num_stages=3,
+                num_warps=8),
+triton.Config({'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 128, 'GROUP_SIZE_M': 8}, num_stages=4,
+                num_warps=4),
+triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 128, 'GROUP_SIZE_M': 8}, num_stages=4,
+                num_warps=4),
+triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 128, 'GROUP_SIZE_M': 8}, num_stages=4,
+                num_warps=4),
+triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 8}, num_stages=4,
+                num_warps=4),
+triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 8}, num_stages=4,
+                num_warps=4),
+triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 32, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 8}, num_stages=4,
+                num_warps=4)
 ]
 
 @triton.autotune(configs = autotune_conf, key=['M', 'N', 'K'])
@@ -192,7 +192,7 @@ autotune_conf = [
 # ordering. This means that each pid computes something like this:
 
 # Lets say A is a matrix of 15 tiles     
-    
+
 #     [0,   1,  2,  3]
 #     [4,   5,  6,  7]
 #     [8,   9, 10, 11]
@@ -303,7 +303,7 @@ def matmul_kernel(
     BLOCK_SIZE_K: tl.constexpr,
     GROUP_SIZE_M: tl.constexpr, 
     ACTIVATION: tl.constexpr):
-    
+
     # our first duty is to calculate the pids, map them to the block of 
     # C they should compute, following the goup-major order to L2 cache reuse.a
 
@@ -364,10 +364,10 @@ def matmul_kernel(
     pid_m = first_pid_m + ((pid % num_pid_in_group) % group_size_m)
 
     # pid_n aims to calculate the the colum
-    
+
     # pid % num_pid_in_group as we said calculates the relative pid within the group, in this case 3 
     # we do floor division against the group height -> 3//2 = 1 
-    
+
     # Why this works: Because our group is 2 rows tall, the GPU spends exactly 2 sequential PIDs in every 
     # column before moving to the right.
 
@@ -378,38 +378,65 @@ def matmul_kernel(
     pid_n = (pid % num_pid_in_group) // group_size_m
 
 
-    # now we arrive to pointer math:
+    # now that we have the ids of the pid we are going to compute, we calculate offsets
+
+    offsets_am = (pid_m * BLOCK_SIZE_M + tl.arrange(0, BLOCK_SIZE_M)) % M 
+    offsets_bn = (pid_n * BLOCK_SIZE_N + tl.arrange(0, BLOCK_SIZE_N)) % N    
+    offs_k = tl.arange(0, BLOCK_SIZE_K)
+
+    # offsets are a list of the "index" of the rows and colums we are going to compute.  
+    # we then calculate the pointers by taking those numbers and the strides to precisely get the memory addreses
+
+    a_ptrs = a + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
+    b_ptrs = b + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
+        
+    accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+
+    # now we have our matrix a (blocksizem, blocksizek) and b (blocksizek, blocksizen) and its pointers from the corresponding
+    # pid we wanted to target.
+
+    # the mission now is to iterate towards the K dimension (as it would be super long, we iterate blocksizek by blocksizek), as the a and b
+    # pointers have that dim.
+
+    for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
+
+        # we load the block of rows and colums we are going to compute to resolve the pid
+        # mask means that 
+
+        a = tl.load(a_ptrs, mask=offs_k[None, :] < K - k * BLOCK_SIZE_K, other=0.0)
+        b = tl.load(b_ptrs, mask=offs_k[:, None] < K - k * BLOCK_SIZE_K, other=0.0)
+
+        # tl dot makes 
+        accumulator = tl.dot(a, b, accumulator)
+
+        # and we advance pointers manually for next it
+        a_ptrs += BLOCK_SIZE_K * stride_ak
+        b_ptrs += BLOCK_SIZE_K * stride_bk
+
+    if ACTIVATION == "leaky_relu":
+        accumulator = leaky_relu(accumulator)
     
+    c = accumulator.to(tl.float16)
+
+    offs_cm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+    offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+
+    c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
+
+    c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
+
+    tl.store(c_ptrs, c, mask=c_mask)
+
+
+
+@triton.jit
+def leaky_relu(x):
+    return tl.where(x >= 0, x, 0.01 * x)
 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    pass
-
-
-
-
-def matmul(a,b):
+def matmul(a,b,activation=""):
 
     assert a.ndim == b.nidm == 2:
     assert a.shape[1] == b.shape[0]
@@ -435,6 +462,7 @@ def matmul(a,b):
         a.stride(0), a.stride(1),
         b.stride(0), b.stride(1),
         c.stride(0), c.stride(1),
+        ACTIVATION=activation
     )
     return c
 
